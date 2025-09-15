@@ -29,13 +29,6 @@ func init() {
 	}
 }
 
-func main2() {
-	userId := "902926941413453824"
-	token := "741b41d581fbc6732c1665dde9c8f96ce3fe3617"
-	ct0 := "ab6842bbf24d08acc142bd93a3ac5d92e36d2f05062e9ddf9bf3869bcfd6b12486a1d941b6e76a68c5e646b24f6d0f77ca2471634f77d449315f830b34437122336e2c3e429d969aaa7982b0eb62bb33"
-	service.Posts(userId, token, ct0)
-}
-
 func main() {
 	twitterService := service.NewTwitterService()
 	twitterService.Search("cz_binance")
