@@ -1,8 +1,7 @@
 package model
 
 type Request struct {
-	UserName string `form:"userName"`
-	UserId   string `form:"userId"`
+	ListId   string `form:"listId"`
 	Interval int    `form:"interval"`
 }
 
@@ -11,5 +10,5 @@ type Response struct {
 }
 
 type DelRequest struct {
-	UserName string `form:"userName"`
+	ListId string `form:"listId"`
 }

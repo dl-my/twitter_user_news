@@ -15,7 +15,7 @@ func Add(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	service.StartSearchTask(req.UserName, req.UserId, time.Duration(req.Interval)*time.Second)
+	service.StartSearchTask(req.ListId, time.Duration(req.Interval)*time.Second)
 
 	c.JSON(http.StatusOK, model.Response{Message: "success"})
 }
@@ -26,7 +26,7 @@ func Del(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	service.StopSearchTask(req.UserName)
+	service.StopSearchTask(req.ListId)
 
 	c.JSON(http.StatusOK, model.Response{Message: "success"})
 }

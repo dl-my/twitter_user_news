@@ -17,39 +17,38 @@ import (
 	"twitter_user_news/utils"
 )
 
-// TwitterService 封装Twitter相关服务
-type TwitterService struct {
+// ListTwitterService 封装Twitter相关服务
+type ListTwitterService struct {
 	seenTweets sync.Map // 使用sync.Map替代全局变量，支持并发安全
 	client     *http.Client
 }
 
-// NewTwitterService 创建新的Twitter服务实例
-func NewTwitterService() *TwitterService {
-	return &TwitterService{
+// NewListTwitterService 创建新的Twitter服务实例
+func NewListTwitterService() *ListTwitterService {
+	return &ListTwitterService{
 		client: &http.Client{
 			Timeout: 30 * time.Second, // 设置超时时间
 		},
 	}
 }
 
-func (s *TwitterService) Search(userName string) {
+func (s *ListTwitterService) Search(listId string) {
 	retryCount := 0
 	authToken, ct0 := utils.GetAuthAndCt0()
 	for {
-		err := s.fetchPosts(userName, authToken, ct0)
+		err := s.fetchPosts(authToken, ct0, listId)
 		if err == nil {
+			fmt.Println("获取成功")
 			return
 		}
 		retryCount++
 		logs.Error("搜索失败",
-			zap.String("userName", userName),
 			zap.Error(err),
 			zap.Int("retryCount", retryCount))
 
 		if retryCount >= common.MaxRetries {
 			// 超过 5 次，重新获取 AuthAndCt0
 			logs.Warn("连续失败达到最大重试次数，切换认证信息",
-				zap.String("userName", userName),
 				zap.String("authToken", authToken))
 			authToken, ct0 = utils.GetAuthAndCt0()
 			retryCount = 0
@@ -59,34 +58,26 @@ func (s *TwitterService) Search(userName string) {
 	}
 }
 
-func (s *TwitterService) generateUrl(userId string) string {
+func (s *ListTwitterService) generateUrl(listId string) string {
 	// 用结构体定义搜索条件
-	variablesStruct := model.PostsVariables{
-		UserID:                                 userId,
-		Count:                                  10,
-		IncludePromotedContent:                 true,
-		WithQuickPromoteEligibilityTweetFields: true,
-		WithVoice:                              true,
+	variablesStruct := model.ListVariables{
+		ListID: listId,
+		Count:  10,
 	}
 	featuresStruct := s.getDefaultFeatures()
-	fieldTogglesStruct := model.PostsFieldToggles{
-		WithArticlePlainText: false,
-	}
 
 	// 序列化成 JSON
 	variablesJSON, _ := json.Marshal(variablesStruct)
 	featuresJSON, _ := json.Marshal(featuresStruct)
-	fieldTogglesJSON, _ := json.Marshal(fieldTogglesStruct)
 
 	params := url.Values{}
 	params.Set("variables", string(variablesJSON))
 	params.Set("features", string(featuresJSON))
-	params.Set("fieldToggles", string(fieldTogglesJSON))
 
-	return common.UserTweetsAndRepliesUrl + "?" + params.Encode()
+	return common.ListLatestTimeLine + "?" + params.Encode()
 }
 
-func (s *TwitterService) getDefaultFeatures() model.PostsFeatures {
+func (s *ListTwitterService) getDefaultFeatures() model.PostsFeatures {
 	return model.PostsFeatures{
 		RwebVideoScreenEnabled: false,
 		PaymentsEnabled:        false,
@@ -126,7 +117,7 @@ func (s *TwitterService) getDefaultFeatures() model.PostsFeatures {
 	}
 }
 
-func (s *TwitterService) createRequest(reqURL, authToken, ct0 string) (*http.Request, error) {
+func (s *ListTwitterService) createRequest(reqURL, authToken, ct0 string) (*http.Request, error) {
 	req, err := http.NewRequest("GET", reqURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("创建请求失败: %w", err)
@@ -137,7 +128,7 @@ func (s *TwitterService) createRequest(reqURL, authToken, ct0 string) (*http.Req
 	req.AddCookie(&http.Cookie{Name: "ct0", Value: ct0})
 
 	// 设置请求头
-	u, _ := url.Parse(common.UserTweetsAndRepliesUrl)
+	u, _ := url.Parse(common.ListLatestTimeLine)
 	req.Header.Set("Authorization", common.Authorization)
 	req.Header.Set("User-Agent", common.UserAgent)
 	req.Header.Set("Accept", "application/json")
@@ -153,8 +144,8 @@ func (s *TwitterService) createRequest(reqURL, authToken, ct0 string) (*http.Req
 	return req, nil
 }
 
-func (s *TwitterService) fetchPosts(userName, authToken, ct0 string) error {
-	reqURL := generateUrl(utils.GetUser(userName))
+func (s *ListTwitterService) fetchPosts(authToken, ct0, listId string) error {
+	reqURL := s.generateUrl(listId)
 
 	req, err := s.createRequest(reqURL, authToken, ct0)
 	if err != nil {
@@ -181,7 +172,7 @@ func (s *TwitterService) fetchPosts(userName, authToken, ct0 string) error {
 		return err
 	}
 
-	fmt.Println(resp.StatusCode, string(body))
+	//fmt.Println(resp.StatusCode, string(body))
 
 	var raw map[string]interface{}
 	if err := json.Unmarshal(body, &raw); err != nil {
@@ -190,42 +181,39 @@ func (s *TwitterService) fetchPosts(userName, authToken, ct0 string) error {
 	}
 
 	// 判断是否有 errors 字段
-	if errs, ok := raw["errors"]; ok {
-		log.Printf("接口返回错误: %v", errs)
-		return fmt.Errorf("接口返回错误: %v", errs)
-	}
+	//if errs, ok := raw["errors"]; ok {
+	//	log.Printf("接口返回错误: %v", errs)
+	//	return fmt.Errorf("接口返回错误: %v", errs)
+	//}
 
-	var result model.PostsResponse
+	var result model.ListResponse
 	err = json.Unmarshal(body, &result)
 	if err != nil {
 		log.Printf("响应解析失败%v,响应:[%s],状态:[%d]\n", err, string(body), resp.StatusCode)
 		return fmt.Errorf("authToken:[%s],err:[%s]", authToken, err.Error())
 	}
 
-	return s.processTimeline(userName, result)
+	return s.processTimeline(result)
 }
 
-func (s *TwitterService) processTimeline(userName string, result model.PostsResponse) error {
-	for _, instruction := range result.Data.User.Result.Timeline.Timeline.Instructions {
+func (s *ListTwitterService) processTimeline(result model.ListResponse) error {
+	for _, instruction := range result.Data.List.TweetsTimeline.Timeline.Instructions {
 		if instruction.Type == "TimelineAddEntries" {
 			for _, entry := range instruction.Entries {
 				// 输出评论
 				for _, item := range entry.Content.Items {
-					s.processTweetOrComment(userName, item.Item.ItemContent.TweetResults.Result)
+					s.processTweetOrComment(item.Item.ItemContent.TweetResults.Result)
 				}
 				// 输出推文
-				s.processTweetOrComment(userName, entry.Content.ItemContent.TweetResults.Result)
+				s.processTweetOrComment(entry.Content.ItemContent.TweetResults.Result)
 			}
 		}
 	}
 	return nil
 }
 
-func (s *TwitterService) processTweetOrComment(userName string, tweet model.Tweet) {
-	// 只处理目标用户的推文或评论
-	if tweet.Legacy.UserIdStr != utils.GetUser(userName) {
-		return
-	}
+func (s *ListTwitterService) processTweetOrComment(tweet model.Tweet) {
+	fmt.Println(tweet)
 	// 检查是否已处理过
 	if _, exists := s.seenTweets.Load(tweet.RestId); exists {
 		return
@@ -237,7 +225,7 @@ func (s *TwitterService) processTweetOrComment(userName string, tweet model.Twee
 	}
 	publishTime := utils.GetTimeStamp(t)
 	fetchTime := utils.GetTimeStamp(time.Now())
-	if fetchTime-publishTime > 10 {
+	if fetchTime-publishTime > 60*60*5 {
 		return
 	}
 	// 提取推文内容和媒体
@@ -255,8 +243,8 @@ func (s *TwitterService) processTweetOrComment(userName string, tweet model.Twee
 	}
 	// 构建日志对象
 	posts := model.LogPosts{
-		UserName:    userName,
-		UserId:      utils.GetUser(userName),
+		UserName:    tweet.Core.UserResults.Result.Core.ScreenName,
+		UserId:      tweet.Core.UserResults.Result.RestId,
 		RestId:      tweet.RestId,
 		ContentEn:   content,
 		ContentZh:   contentZh,
@@ -268,14 +256,14 @@ func (s *TwitterService) processTweetOrComment(userName string, tweet model.Twee
 	s.seenTweets.Store(tweet.RestId, struct{}{})
 }
 
-func (s *TwitterService) extractTweetContent(tweet model.Tweet) (string, map[string]string) {
+func (s *ListTwitterService) extractTweetContent(tweet model.Tweet) (string, map[string]string) {
 	if tweet.Legacy.RetweetedStatusResult != nil {
 		return s.extractRetweetContent(tweet.Legacy.RetweetedStatusResult)
 	}
 	return s.extractOriginalContent(tweet)
 }
 
-func (s *TwitterService) extractOriginalContent(tweet model.Tweet) (string, map[string]string) {
+func (s *ListTwitterService) extractOriginalContent(tweet model.Tweet) (string, map[string]string) {
 	mediaMap := s.getMedia(tweet.Legacy.Entities.Medias)
 	if tweet.NoteTweet != nil {
 		return tweet.NoteTweet.NoteTweetResults.Result.Text, mediaMap
@@ -283,7 +271,7 @@ func (s *TwitterService) extractOriginalContent(tweet model.Tweet) (string, map[
 	return tweet.Legacy.FullText, mediaMap
 }
 
-func (s *TwitterService) extractRetweetContent(retweet *model.RetweetedStatusResult) (string, map[string]string) {
+func (s *ListTwitterService) extractRetweetContent(retweet *model.RetweetedStatusResult) (string, map[string]string) {
 	mediaMap := s.getMedia(retweet.Result.Legacy.Entities.Medias)
 	if retweet.Result.NoteTweet != nil {
 		return retweet.Result.NoteTweet.NoteTweetResults.Result.Text, mediaMap
@@ -292,7 +280,7 @@ func (s *TwitterService) extractRetweetContent(retweet *model.RetweetedStatusRes
 
 }
 
-func (s *TwitterService) getMedia(medias []model.Media) map[string]string {
+func (s *ListTwitterService) getMedia(medias []model.Media) map[string]string {
 	mediaMap := make(map[string]string)
 	for _, media := range medias {
 		switch media.Type {

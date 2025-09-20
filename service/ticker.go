@@ -5,7 +5,6 @@ import (
 	"log"
 	"sync"
 	"time"
-	"twitter_user_news/utils"
 )
 
 // 管理所有用户名任务
@@ -15,33 +14,31 @@ var (
 )
 
 // StartSearchTask 启动指定用户名的定时搜索任务
-func StartSearchTask(userName, userId string, interval time.Duration) {
+func StartSearchTask(listId string, interval time.Duration) {
 	mu.Lock()
 	defer mu.Unlock()
 
 	// 如果任务已经存在，先停止旧任务
-	if cancel, exists := taskMap[userName]; exists {
+	if cancel, exists := taskMap[listId]; exists {
 		cancel()
-		delete(taskMap, userName)
-		utils.DelUser(userName)
+		delete(taskMap, listId)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	taskMap[userName] = cancel
-	utils.AddUser(userName, userId)
+	taskMap[listId] = cancel
 
-	twitterService := NewTwitterService()
-	twitterService.Search(userName)
+	twitterService := NewListTwitterService()
+	twitterService.Search(listId)
 	ticker := time.NewTicker(interval)
 	go func() {
 		defer ticker.Stop()
-		log.Printf("监听任务已启动, 用户名: %s, 间隔: %v", userName, interval)
+		log.Printf("监听任务已启动, listId: %s, 间隔: %v", listId, interval)
 		for {
 			select {
 			case <-ticker.C:
-				twitterService.Search(userName)
+				twitterService.Search(listId)
 			case <-ctx.Done():
-				log.Printf("监听任务已停止, 用户名: %s", userName)
+				log.Printf("监听任务已停止, listId: %s", listId)
 				return
 			}
 		}
@@ -49,16 +46,15 @@ func StartSearchTask(userName, userId string, interval time.Duration) {
 }
 
 // StopSearchTask 停止指定用户名的定时搜索任务
-func StopSearchTask(userName string) {
+func StopSearchTask(listId string) {
 	mu.Lock()
 	defer mu.Unlock()
 
-	if cancel, exists := taskMap[userName]; exists {
+	if cancel, exists := taskMap[listId]; exists {
 		cancel()
-		delete(taskMap, userName)
-		utils.DelUser(userName)
+		delete(taskMap, listId)
 	} else {
-		log.Printf("没有找到用户名 [%s] 对应的任务", userName)
+		log.Printf("没有找到listId [%s] 对应的任务", listId)
 	}
 }
 

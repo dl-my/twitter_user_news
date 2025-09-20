@@ -24,14 +24,25 @@ func init() {
 		log.Println(err)
 	}
 	// 初始化user
-	if err := utils.LoadUsers(); err != nil {
-		log.Println("文件加载失败", err)
-	}
+	//if err := utils.LoadUsers(); err != nil {
+	//	log.Println("文件加载失败", err)
+	//}
 }
 
 func main() {
-	twitterService := service.NewTwitterService()
-	twitterService.Search("cz_binance")
+	twitterService := service.NewListTwitterService()
+	twitterService.Search("")
+
+	//ticker := time.NewTicker(10 * time.Second)
+	//defer ticker.Stop()
+	//log.Println("监听任务已启动")
+	//for {
+	//	select {
+	//	case <-ticker.C:
+	//		twitterService.Search()
+	//	}
+	//}
+
 }
 
 // 监听信号并优雅关闭

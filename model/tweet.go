@@ -1,22 +1,5 @@
 package model
 
-type PostsResponse struct {
-	Data struct {
-		User struct {
-			Result struct {
-				Timeline struct {
-					Timeline struct {
-						Instructions []struct {
-							Type    string  `json:"type"`
-							Entries []Entry `json:"entries"`
-						} `json:"Instructions"`
-					} `json:"timeline"`
-				} `json:"timeline"`
-			} `json:"result"`
-		} `json:"user"`
-	} `json:"data"`
-}
-
 type Entry struct {
 	SortIndex string `json:"sortIndex"`
 	Content   struct {
@@ -40,6 +23,7 @@ type Entry struct {
 
 type Tweet struct {
 	RestId    string      `json:"rest_id"`
+	Core      Core        `json:"core"`
 	NoteTweet *NoteTweet  `json:"note_tweet"`
 	Legacy    TweetLegacy `json:"legacy"`
 }
@@ -55,6 +39,17 @@ type ReTweet struct {
 }
 type RetweetedStatusResult struct {
 	Result ReTweet `json:"result"`
+}
+
+type Core struct {
+	UserResults struct {
+		Result struct {
+			RestId string `json:"rest_id"`
+			Core   struct {
+				ScreenName string `json:"screen_name"`
+			} `json:"core"`
+		} `json:"result"`
+	} `json:"user_results"`
 }
 
 type TweetLegacy struct {
@@ -85,15 +80,4 @@ type NoteTweet struct {
 			Text string `json:"text"`
 		} `json:"result"`
 	} `json:"note_tweet_results"`
-}
-
-type LogPosts struct {
-	UserName    string            `json:"username"`
-	UserId      string            `json:"user_id"`
-	RestId      string            `json:"rest_id"`
-	ContentEn   string            `json:"content_en"`
-	ContentZh   string            `json:"content_zh"`
-	PublishTime int64             `json:"publish_time"`
-	FetchTime   int64             `json:"fetch_time"`
-	Media       map[string]string `json:"media"`
 }
