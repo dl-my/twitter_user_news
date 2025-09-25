@@ -17,22 +17,24 @@ import (
 	"twitter_user_news/utils"
 )
 
-// SearchTwitterService 封装Twitter相关服务
-type SearchTwitterService struct {
+// HomeTwitterService 封装Twitter相关服务
+type HomeTwitterService struct {
 	seenTweets sync.Map // 使用sync.Map替代全局变量，支持并发安全
 	client     *http.Client
 }
 
-// NewSearchTwitterService 创建新的Twitter服务实例
-func NewSearchTwitterService() *SearchTwitterService {
-	return &SearchTwitterService{
+// NewHomeTwitterService 创建新的Twitter服务实例
+func NewHomeTwitterService() *HomeTwitterService {
+	return &HomeTwitterService{
 		client: &http.Client{
 			Timeout: 30 * time.Second, // 设置超时时间
 		},
 	}
 }
 
-func (s *SearchTwitterService) Search() {
+// ListID: "1967411334661988555",
+
+func (s *HomeTwitterService) Search() {
 	retryCount := 0
 	authToken, ct0 := utils.GetAuthAndCt0()
 	for {
@@ -58,14 +60,14 @@ func (s *SearchTwitterService) Search() {
 	}
 }
 
-func (s *SearchTwitterService) generateUrl() string {
+func (s *HomeTwitterService) generateUrl(seenIds []string) string {
 	// 用结构体定义搜索条件
-	variablesStruct := model.SearchVariables{
-		RawQuery:              "filter:replies filter:follows",
-		Count:                 20,
-		QuerySource:           "typed_query",
-		Product:               "Latest",
-		WithGrokTranslatedBio: false,
+	variablesStruct := model.HomeVariables{
+		Count:                  20,
+		IncludePromotedContent: true,
+		LatestControlAvailable: true,
+		RequestContext:         "launch",
+		//SeenTweetIds:           seenIds,
 	}
 	featuresStruct := s.getDefaultFeatures()
 
@@ -76,11 +78,12 @@ func (s *SearchTwitterService) generateUrl() string {
 	params := url.Values{}
 	params.Set("variables", string(variablesJSON))
 	params.Set("features", string(featuresJSON))
+	params.Set("queryId", "4GypC700dutgf7ekTk2cyA")
 
-	return common.SearchTimeline + "?" + params.Encode()
+	return common.HomeLatestTimeLine + "?" + params.Encode()
 }
 
-func (s *SearchTwitterService) getDefaultFeatures() model.PostsFeatures {
+func (s *HomeTwitterService) getDefaultFeatures() model.PostsFeatures {
 	return model.PostsFeatures{
 		RwebVideoScreenEnabled: false,
 		PaymentsEnabled:        false,
@@ -120,7 +123,7 @@ func (s *SearchTwitterService) getDefaultFeatures() model.PostsFeatures {
 	}
 }
 
-func (s *SearchTwitterService) createRequest(reqURL, authToken, ct0 string) (*http.Request, error) {
+func (s *HomeTwitterService) createRequest(reqURL, authToken, ct0 string) (*http.Request, error) {
 	req, err := http.NewRequest("GET", reqURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("创建请求失败: %w", err)
@@ -131,7 +134,7 @@ func (s *SearchTwitterService) createRequest(reqURL, authToken, ct0 string) (*ht
 	req.AddCookie(&http.Cookie{Name: "ct0", Value: ct0})
 
 	// 设置请求头
-	u, _ := url.Parse(common.SearchTimeline)
+	u, _ := url.Parse(common.HomeLatestTimeLine)
 	req.Header.Set("Authorization", common.Authorization)
 	req.Header.Set("User-Agent", common.UserAgent)
 	req.Header.Set("Accept", "application/json")
@@ -147,8 +150,8 @@ func (s *SearchTwitterService) createRequest(reqURL, authToken, ct0 string) (*ht
 	return req, nil
 }
 
-func (s *SearchTwitterService) fetchPosts(authToken, ct0 string) error {
-	reqURL := s.generateUrl()
+func (s *HomeTwitterService) fetchPosts(authToken, ct0 string) error {
+	reqURL := s.generateUrl(nil)
 
 	req, err := s.createRequest(reqURL, authToken, ct0)
 	if err != nil {
@@ -169,13 +172,15 @@ func (s *SearchTwitterService) fetchPosts(authToken, ct0 string) error {
 		return fmt.Errorf("HTTP请求失败，状态码: %d, 响应: %s", resp.StatusCode, string(body))
 	}
 
+	fmt.Printf("x-rate-limit-limit: %s, x-rate-limit-remaining: %s\n", resp.Header.Get("x-rate-limit-limit"), resp.Header.Get("x-rate-limit-remaining"))
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Printf("读取响应数据失败%v\n", err)
 		return err
 	}
-
-	fmt.Println(resp.StatusCode, string(body[:500]))
+	//fmt.Println(resp.StatusCode, string(body))
+	fmt.Println(resp.StatusCode, string(body[:600]))
 
 	var raw map[string]interface{}
 	if err := json.Unmarshal(body, &raw); err != nil {
@@ -189,19 +194,18 @@ func (s *SearchTwitterService) fetchPosts(authToken, ct0 string) error {
 	//	return fmt.Errorf("接口返回错误: %v", errs)
 	//}
 
-	var result model.SearchResponse
+	var result model.HomeResponse
 	err = json.Unmarshal(body, &result)
 	if err != nil {
 		log.Printf("响应解析失败%v,响应:[%s],状态:[%d]\n", err, string(body), resp.StatusCode)
 		return fmt.Errorf("authToken:[%s],err:[%s]", authToken, err.Error())
 	}
-	//fmt.Println(result)
 
 	return s.processTimeline(result)
 }
 
-func (s *SearchTwitterService) processTimeline(result model.SearchResponse) error {
-	for _, instruction := range result.Data.SearchByRawQuery.SearchTimeline.Timeline.Instructions {
+func (s *HomeTwitterService) processTimeline(result model.HomeResponse) error {
+	for _, instruction := range result.Data.Home.HomeTimeLineUrt.Instructions {
 		if instruction.Type == "TimelineAddEntries" {
 			for _, entry := range instruction.Entries {
 				// 输出评论
@@ -216,7 +220,7 @@ func (s *SearchTwitterService) processTimeline(result model.SearchResponse) erro
 	return nil
 }
 
-func (s *SearchTwitterService) processTweetOrComment(tweet model.Tweet) {
+func (s *HomeTwitterService) processTweetOrComment(tweet model.Tweet) {
 	// 检查是否已处理过
 	if _, exists := s.seenTweets.Load(tweet.RestId); exists {
 		return
@@ -231,9 +235,10 @@ func (s *SearchTwitterService) processTweetOrComment(tweet model.Tweet) {
 	}
 	publishTime := utils.GetTimeStamp(t)
 	fetchTime := utils.GetTimeStamp(time.Now())
-	if fetchTime-publishTime > 60 {
+	if fetchTime-publishTime > 60*60*1 {
 		return
 	}
+	fmt.Println(tweet)
 	// 提取推文内容和媒体
 	content, mediaMap := s.extractTweetContent(tweet)
 	if content == "" {
@@ -262,14 +267,14 @@ func (s *SearchTwitterService) processTweetOrComment(tweet model.Tweet) {
 	s.seenTweets.Store(tweet.RestId, struct{}{})
 }
 
-func (s *SearchTwitterService) extractTweetContent(tweet model.Tweet) (string, map[string][]string) {
+func (s *HomeTwitterService) extractTweetContent(tweet model.Tweet) (string, map[string][]string) {
 	if tweet.Legacy.RetweetedStatusResult != nil {
 		return s.extractRetweetContent(tweet.Legacy.RetweetedStatusResult)
 	}
 	return s.extractOriginalContent(tweet)
 }
 
-func (s *SearchTwitterService) extractOriginalContent(tweet model.Tweet) (string, map[string][]string) {
+func (s *HomeTwitterService) extractOriginalContent(tweet model.Tweet) (string, map[string][]string) {
 	mediaMap := s.getMedia(tweet.Legacy.Entities.Medias)
 	if tweet.NoteTweet != nil {
 		return tweet.NoteTweet.NoteTweetResults.Result.Text, mediaMap
@@ -277,7 +282,7 @@ func (s *SearchTwitterService) extractOriginalContent(tweet model.Tweet) (string
 	return tweet.Legacy.FullText, mediaMap
 }
 
-func (s *SearchTwitterService) extractRetweetContent(retweet *model.RetweetedStatusResult) (string, map[string][]string) {
+func (s *HomeTwitterService) extractRetweetContent(retweet *model.RetweetedStatusResult) (string, map[string][]string) {
 	mediaMap := s.getMedia(retweet.Result.Legacy.Entities.Medias)
 	if retweet.Result.NoteTweet != nil {
 		return retweet.Result.NoteTweet.NoteTweetResults.Result.Text, mediaMap
@@ -286,7 +291,7 @@ func (s *SearchTwitterService) extractRetweetContent(retweet *model.RetweetedSta
 
 }
 
-func (s *SearchTwitterService) getMedia(medias []model.Media) map[string][]string {
+func (s *HomeTwitterService) getMedia(medias []model.Media) map[string][]string {
 	mediaMap := make(map[string][]string)
 	for _, media := range medias {
 		switch media.Type {

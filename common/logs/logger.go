@@ -47,8 +47,10 @@ func getEncoderCore(filename string, cfg config.LogConfig, level zapcore.Level) 
 	// 根据日志等级调整 Caller / Stacktrace
 	switch level {
 	case zapcore.WarnLevel:
+		encoderConfig.TimeKey = "time"
 		encoderConfig.CallerKey = "caller" // 显示 Caller
 	case zapcore.ErrorLevel:
+		encoderConfig.TimeKey = "time"
 		encoderConfig.CallerKey = "caller"         // 显示 Caller
 		encoderConfig.StacktraceKey = "stacktrace" // 显示堆栈
 	default:

@@ -32,6 +32,8 @@ func NewListTwitterService() *ListTwitterService {
 	}
 }
 
+// ListID: "1967411334661988555",
+
 func (s *ListTwitterService) Search(listId string) {
 	retryCount := 0
 	authToken, ct0 := utils.GetAuthAndCt0()
@@ -54,7 +56,7 @@ func (s *ListTwitterService) Search(listId string) {
 			retryCount = 0
 		}
 
-		time.Sleep(2 * time.Second) // 等待一会再试
+		time.Sleep(1 * time.Second) // 等待一会再试
 	}
 }
 
@@ -166,13 +168,15 @@ func (s *ListTwitterService) fetchPosts(authToken, ct0, listId string) error {
 		return fmt.Errorf("HTTP请求失败，状态码: %d, 响应: %s", resp.StatusCode, string(body))
 	}
 
+	fmt.Printf("x-rate-limit-limit: %s, x-rate-limit-remaining: %s\n", resp.Header.Get("x-rate-limit-limit"), resp.Header.Get("x-rate-limit-remaining"))
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Printf("读取响应数据失败%v\n", err)
 		return err
 	}
-
 	//fmt.Println(resp.StatusCode, string(body))
+	fmt.Println(resp.StatusCode, string(body[:1000]))
 
 	var raw map[string]interface{}
 	if err := json.Unmarshal(body, &raw); err != nil {
@@ -213,21 +217,24 @@ func (s *ListTwitterService) processTimeline(result model.ListResponse) error {
 }
 
 func (s *ListTwitterService) processTweetOrComment(tweet model.Tweet) {
-	fmt.Println(tweet)
 	// 检查是否已处理过
 	if _, exists := s.seenTweets.Load(tweet.RestId); exists {
 		return
 	}
 	// 检查是否超时
+	if tweet.Legacy.CreatedAt == "" {
+		return
+	}
 	t, err := utils.UtcToShanghai(tweet.Legacy.CreatedAt)
 	if err != nil {
 		return
 	}
 	publishTime := utils.GetTimeStamp(t)
 	fetchTime := utils.GetTimeStamp(time.Now())
-	if fetchTime-publishTime > 60*60*5 {
+	if fetchTime-publishTime > 60*60*1 {
 		return
 	}
+	fmt.Println(tweet)
 	// 提取推文内容和媒体
 	content, mediaMap := s.extractTweetContent(tweet)
 	if content == "" {
@@ -256,14 +263,14 @@ func (s *ListTwitterService) processTweetOrComment(tweet model.Tweet) {
 	s.seenTweets.Store(tweet.RestId, struct{}{})
 }
 
-func (s *ListTwitterService) extractTweetContent(tweet model.Tweet) (string, map[string]string) {
+func (s *ListTwitterService) extractTweetContent(tweet model.Tweet) (string, map[string][]string) {
 	if tweet.Legacy.RetweetedStatusResult != nil {
 		return s.extractRetweetContent(tweet.Legacy.RetweetedStatusResult)
 	}
 	return s.extractOriginalContent(tweet)
 }
 
-func (s *ListTwitterService) extractOriginalContent(tweet model.Tweet) (string, map[string]string) {
+func (s *ListTwitterService) extractOriginalContent(tweet model.Tweet) (string, map[string][]string) {
 	mediaMap := s.getMedia(tweet.Legacy.Entities.Medias)
 	if tweet.NoteTweet != nil {
 		return tweet.NoteTweet.NoteTweetResults.Result.Text, mediaMap
@@ -271,7 +278,7 @@ func (s *ListTwitterService) extractOriginalContent(tweet model.Tweet) (string, 
 	return tweet.Legacy.FullText, mediaMap
 }
 
-func (s *ListTwitterService) extractRetweetContent(retweet *model.RetweetedStatusResult) (string, map[string]string) {
+func (s *ListTwitterService) extractRetweetContent(retweet *model.RetweetedStatusResult) (string, map[string][]string) {
 	mediaMap := s.getMedia(retweet.Result.Legacy.Entities.Medias)
 	if retweet.Result.NoteTweet != nil {
 		return retweet.Result.NoteTweet.NoteTweetResults.Result.Text, mediaMap
@@ -280,16 +287,16 @@ func (s *ListTwitterService) extractRetweetContent(retweet *model.RetweetedStatu
 
 }
 
-func (s *ListTwitterService) getMedia(medias []model.Media) map[string]string {
-	mediaMap := make(map[string]string)
+func (s *ListTwitterService) getMedia(medias []model.Media) map[string][]string {
+	mediaMap := make(map[string][]string)
 	for _, media := range medias {
 		switch media.Type {
 		case common.Photo:
-			mediaMap[common.Photo] = media.MediaUrl
+			mediaMap[common.Photo] = append(mediaMap[common.Photo], media.MediaUrl)
 		case common.AnimatedGif, common.Video:
 			for _, variant := range media.VideoInfo.Variants {
 				if strings.Contains(variant.ContentType, common.Video) {
-					mediaMap[media.Type] = variant.URL
+					mediaMap[media.Type] = append(mediaMap[media.Type], variant.URL)
 					break
 				}
 			}
