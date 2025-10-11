@@ -3,3 +3,4 @@
 /login/
 *.json
 *.yaml
+test.go

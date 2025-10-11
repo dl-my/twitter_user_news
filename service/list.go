@@ -66,7 +66,7 @@ func (s *ListTwitterService) generateUrl(listId string) string {
 		ListID: listId,
 		Count:  10,
 	}
-	featuresStruct := s.getDefaultFeatures()
+	featuresStruct := getDefaultFeatures()
 
 	// 序列化成 JSON
 	variablesJSON, _ := json.Marshal(variablesStruct)
@@ -79,77 +79,10 @@ func (s *ListTwitterService) generateUrl(listId string) string {
 	return common.ListLatestTimeLine + "?" + params.Encode()
 }
 
-func (s *ListTwitterService) getDefaultFeatures() model.PostsFeatures {
-	return model.PostsFeatures{
-		RwebVideoScreenEnabled: false,
-		PaymentsEnabled:        false,
-		RwebXchatEnabled:       false,
-		ProfileLabelImprovementsPcfLabelInPostEnabled:                  true,
-		RwebTipjarConsumptionEnabled:                                   true,
-		VerifiedPhoneLabelEnabled:                                      false,
-		CreatorSubscriptionsTweetPreviewAPIEnabled:                     true,
-		ResponsiveWebGraphqlTimelineNavigationEnabled:                  true,
-		ResponsiveWebGraphqlSkipUserProfileImageExtensionsEnabled:      false,
-		PremiumContentAPIReadEnabled:                                   false,
-		CommunitiesWebEnableTweetCommunityResultsFetch:                 true,
-		C9STweetAnatomyModeratorBadgeEnabled:                           true,
-		ResponsiveWebGrokAnalyzeButtonFetchTrendsEnabled:               false,
-		ResponsiveWebGrokAnalyzePostFollowupsEnabled:                   true,
-		ResponsiveWebJetfuelFrame:                                      true,
-		ResponsiveWebGrokShareAttachmentEnabled:                        true,
-		ArticlesPreviewEnabled:                                         true,
-		ResponsiveWebEditTweetAPIEnabled:                               true,
-		GraphqlIsTranslatableRwebTweetIsTranslatableEnabled:            true,
-		ViewCountsEverywhereAPIEnabled:                                 true,
-		LongformNotetweetsConsumptionEnabled:                           true,
-		ResponsiveWebTwitterArticleTweetConsumptionEnabled:             true,
-		TweetAwardsWebTippingEnabled:                                   false,
-		ResponsiveWebGrokShowGrokTranslatedPost:                        false,
-		ResponsiveWebGrokAnalysisButtonFromBackend:                     true,
-		CreatorSubscriptionsQuoteTweetPreviewEnabled:                   false,
-		FreedomOfSpeechNotReachFetchEnabled:                            true,
-		StandardizedNudgesMisinfo:                                      true,
-		TweetWithVisibilityResultsPreferGqlLimitedActionsPolicyEnabled: true,
-		LongformNotetweetsRichTextReadEnabled:                          true,
-		LongformNotetweetsInlineMediaEnabled:                           true,
-		ResponsiveWebGrokImageAnnotationEnabled:                        true,
-		ResponsiveWebGrokImagineAnnotationEnabled:                      true,
-		ResponsiveWebGrokCommunityNoteAutoTranslationIsEnabled:         false,
-		ResponsiveWebEnhanceCardsEnabled:                               false,
-	}
-}
-
-func (s *ListTwitterService) createRequest(reqURL, authToken, ct0 string) (*http.Request, error) {
-	req, err := http.NewRequest("GET", reqURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("创建请求失败: %w", err)
-	}
-
-	// 设置cookies
-	req.AddCookie(&http.Cookie{Name: "auth_token", Value: authToken})
-	req.AddCookie(&http.Cookie{Name: "ct0", Value: ct0})
-
-	// 设置请求头
-	u, _ := url.Parse(common.ListLatestTimeLine)
-	req.Header.Set("Authorization", common.Authorization)
-	req.Header.Set("User-Agent", common.UserAgent)
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Client-Transaction-Id", utils.XClientTransactionID("GET", u.Path))
-	req.Header.Set("X-Csrf-Token", ct0)
-	req.Header.Set("Referer", "https://x.com")
-	req.Header.Set("Cache-Control", "no-cache")
-	req.Header.Set("X-Twitter-Active-User", "yes")
-	req.Header.Set("X-Twitter-Auth-Type", "OAuth2Session")
-	req.Header.Set("X-Twitter-Client-Language", "en")
-
-	return req, nil
-}
-
 func (s *ListTwitterService) fetchPosts(authToken, ct0, listId string) error {
 	reqURL := s.generateUrl(listId)
 
-	req, err := s.createRequest(reqURL, authToken, ct0)
+	req, err := createRequest(reqURL, authToken, ct0)
 	if err != nil {
 		log.Printf("创建请求失败%v\n", err)
 		return err
@@ -236,7 +169,7 @@ func (s *ListTwitterService) processTweetOrComment(tweet model.Tweet) {
 	}
 	fmt.Println(tweet)
 	// 提取推文内容和媒体
-	content, mediaMap := s.extractTweetContent(tweet)
+	content, mediaMap := extractTweetContent(tweet)
 	if content == "" {
 		return
 	}
@@ -261,46 +194,4 @@ func (s *ListTwitterService) processTweetOrComment(tweet model.Tweet) {
 	}
 	logs.InfoPosts(posts)
 	s.seenTweets.Store(tweet.RestId, struct{}{})
-}
-
-func (s *ListTwitterService) extractTweetContent(tweet model.Tweet) (string, map[string][]string) {
-	if tweet.Legacy.RetweetedStatusResult != nil {
-		return s.extractRetweetContent(tweet.Legacy.RetweetedStatusResult)
-	}
-	return s.extractOriginalContent(tweet)
-}
-
-func (s *ListTwitterService) extractOriginalContent(tweet model.Tweet) (string, map[string][]string) {
-	mediaMap := s.getMedia(tweet.Legacy.Entities.Medias)
-	if tweet.NoteTweet != nil {
-		return tweet.NoteTweet.NoteTweetResults.Result.Text, mediaMap
-	}
-	return tweet.Legacy.FullText, mediaMap
-}
-
-func (s *ListTwitterService) extractRetweetContent(retweet *model.RetweetedStatusResult) (string, map[string][]string) {
-	mediaMap := s.getMedia(retweet.Result.Legacy.Entities.Medias)
-	if retweet.Result.NoteTweet != nil {
-		return retweet.Result.NoteTweet.NoteTweetResults.Result.Text, mediaMap
-	}
-	return retweet.Result.Legacy.FullText, mediaMap
-
-}
-
-func (s *ListTwitterService) getMedia(medias []model.Media) map[string][]string {
-	mediaMap := make(map[string][]string)
-	for _, media := range medias {
-		switch media.Type {
-		case common.Photo:
-			mediaMap[common.Photo] = append(mediaMap[common.Photo], media.MediaUrl)
-		case common.AnimatedGif, common.Video:
-			for _, variant := range media.VideoInfo.Variants {
-				if strings.Contains(variant.ContentType, common.Video) {
-					mediaMap[media.Type] = append(mediaMap[media.Type], variant.URL)
-					break
-				}
-			}
-		}
-	}
-	return mediaMap
 }
