@@ -44,13 +44,13 @@ func (s *ListTwitterService) Search(listId string) {
 			return
 		}
 		retryCount++
-		logs.Error("搜索失败",
+		logs.Warn("获取失败",
 			zap.Error(err),
 			zap.Int("retryCount", retryCount))
 
 		if retryCount >= common.MaxRetries {
 			// 超过 5 次，重新获取 AuthAndCt0
-			logs.Warn("连续失败达到最大重试次数，切换认证信息",
+			logs.Error("连续失败达到最大重试次数，切换认证信息",
 				zap.String("authToken", authToken))
 			authToken, ct0 = utils.GetAuthAndCt0()
 			retryCount = 0
@@ -109,7 +109,7 @@ func (s *ListTwitterService) fetchPosts(authToken, ct0, listId string) error {
 		return err
 	}
 	//fmt.Println(resp.StatusCode, string(body))
-	fmt.Println(resp.StatusCode, string(body[:1000]))
+	fmt.Println(resp.StatusCode, string(body[:500]))
 
 	var raw map[string]interface{}
 	if err := json.Unmarshal(body, &raw); err != nil {
@@ -164,7 +164,7 @@ func (s *ListTwitterService) processTweetOrComment(tweet model.Tweet) {
 	}
 	publishTime := utils.GetTimeStamp(t)
 	fetchTime := utils.GetTimeStamp(time.Now())
-	if fetchTime-publishTime > 60*60*1 {
+	if fetchTime-publishTime > 60 {
 		return
 	}
 	fmt.Println(tweet)

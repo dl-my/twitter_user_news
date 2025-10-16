@@ -42,13 +42,13 @@ func (s *SearchTwitterService) Search() {
 			return
 		}
 		retryCount++
-		logs.Error("搜索失败",
+		logs.Warn("搜索失败",
 			zap.Error(err),
 			zap.Int("retryCount", retryCount))
 
 		if retryCount >= common.MaxRetries {
 			// 超过 5 次，重新获取 AuthAndCt0
-			logs.Warn("连续失败达到最大重试次数，切换认证信息",
+			logs.Error("连续失败达到最大重试次数，切换认证信息",
 				zap.String("authToken", authToken))
 			authToken, ct0 = utils.GetAuthAndCt0()
 			retryCount = 0
